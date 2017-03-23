@@ -11,6 +11,7 @@
 * sharding-jdbc-config-spring&nbsp;&nbsp;[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-config-spring/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-config-spring)
 * sharding-jdbc-transaction&nbsp;&nbsp;[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-transaction/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-transaction)
 * sharding-jdbc-transaction-async-job&nbsp;&nbsp;[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-transaction-async-job/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-transaction-async-job)
+* sharding-jdbc-self-id-generator&nbsp;&nbsp;[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-self-id-generator/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc-self-id-generator)
 
 # License
 [![Hex.pm](http://dangdangdotcom.github.io/sharding-jdbc/img/license.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
@@ -26,7 +27,13 @@
 * 曹昊 &nbsp;&nbsp;&nbsp;[当当](http://www.dangdang.com/) caohao@dangdang.com
 * 岳令 &nbsp;&nbsp;&nbsp;[当当](http://www.dangdang.com/) yueling@dangdang.com
 
-**讨论QQ群：**532576663（不限于Sharding-JDBC，包括分布式，数据库相关以及其他互联网技术交流。由于QQ群已接近饱和，我们希望您在申请加群之前仔细阅读文档，并在加群申请中正确回答问题，以及在申请时写上您的姓名和公司名称。并且在入群后及时修改群名片。否则我们将有权拒绝您的入群申请。谢谢合作。）
+# 交流与参与
+
+ - **讨论QQ群：** 532576663（不限于Sharding-JDBC，包括分布式，数据库相关以及其他互联网技术交流。由于QQ群已接近饱和，我们希望您在申请加群之前仔细阅读文档，并在加群申请中正确回答问题，以及在申请时写上您的姓名和公司名称。并且在入群后及时修改群名片。否则我们将有权拒绝您的入群申请。谢谢合作。）
+ - **邮件组 sharding_jdbc@groups.163.com** ，如果在使用上需要帮助，或者疑似的bug，请发邮件到该邮件组中。发邮件之前请先阅读[FAQ](http://dangdangdotcom.github.io/sharding-jdbc/post/faq/)。
+ - 报告确定的bug，提交增强功能建议和提交补丁等，请阅读[如何进行贡献](CONTRIBUTING.md)。
+ 
+ **使用Sharding-JDBC的公司如果方便请留下公司+网址** https://github.com/dangdangdotcom/sharding-jdbc/issues/234
 
 # 简介
 
@@ -44,6 +51,7 @@
 * `SQL`解析功能完善，支持聚合，分组，排序，`Limit`，`OR`等查询，并且支持`Binding Table`以及笛卡尔积的表查询。
 * 支持柔性事务(目前仅最大努力送达型)。
 * 支持读写分离。
+* 支持分布式生成全局主键。
 
 `Sharding-JDBC`配置多样：
 
@@ -74,6 +82,8 @@
 
 # 相关文档
 
+[FAQ](http://dangdangdotcom.github.io/sharding-jdbc/post/faq/)
+
 [Release Notes](http://dangdangdotcom.github.io/sharding-jdbc/post/release_notes/)
 
 [使用指南](http://dangdangdotcom.github.io/sharding-jdbc/post/user_guide/)
@@ -91,6 +101,8 @@
 [读写分离](http://dangdangdotcom.github.io/sharding-jdbc/post/master_slave)
 
 [柔性事务](http://dangdangdotcom.github.io/sharding-jdbc/post/soft_transaction)
+
+[Id生成器](http://dangdangdotcom.github.io/sharding-jdbc/post/id-generator)
 
 [目录结构说明](http://dangdangdotcom.github.io/sharding-jdbc/post/directory_structure)
 
@@ -198,7 +210,7 @@ try (
                 <rdb:table-rule logic-table="t_order" actual-tables="t_order_${0..3}" table-strategy="orderTableStrategy"/>
                 <rdb:table-rule logic-table="t_order_item" actual-tables="t_order_item_${0..3}" table-strategy="orderItemTableStrategy"/>
             </rdb:table-rules>
-            <rdb:default-database-strategy sharding-columns="user_id" algorithm-expression="dbtbl_${user_id.longValue() % 2 + 1}"/>
+            <rdb:default-database-strategy sharding-columns="none" algorithm-class="com.dangdang.ddframe.rdb.sharding.api.strategy.database.NoneDatabaseShardingAlgorithm"/>
         </rdb:sharding-rule>
     </rdb:data-source>
 </beans>

@@ -30,7 +30,10 @@ import com.dangdang.ddframe.rdb.sharding.api.strategy.table.TableShardingStrateg
 import com.dangdang.ddframe.rdb.sharding.jdbc.ShardingDataSource;
 import com.dangdang.ddframe.rdb.sharding.parser.result.router.Condition;
 import com.google.common.collect.Lists;
+import lombok.AccessLevel;
+import lombok.Getter;
 import org.dbunit.DatabaseUnitException;
+import org.junit.AfterClass;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -40,7 +43,9 @@ import java.util.List;
 
 public abstract class AbstractShardingDataBasesOnlyHintDBUnitTest extends AbstractDBUnitTest {
     
-    private final String dataSourceName = "dataSource_%s";
+    private static boolean isShutdown;
+    
+    private static ShardingDataSource shardingDataSource;
     
     @Override
     protected List<String> getSchemaFiles() {
@@ -73,7 +78,15 @@ public abstract class AbstractShardingDataBasesOnlyHintDBUnitTest extends Abstra
     }
     
     protected final ShardingDataSource getShardingDataSource() {
-        DataSourceRule dataSourceRule = new DataSourceRule(createDataSourceMap(dataSourceName));
+        if (null != shardingDataSource && !isShutdown) {
+            return shardingDataSource;
+        }
+        isShutdown = false;
+        return shardingDataSource = initDataSource();
+    }
+    
+    ShardingDataSource initDataSource() {
+        DataSourceRule dataSourceRule = new DataSourceRule(createDataSourceMap("dataSource_%s"));
         TableRule orderTableRule = TableRule.builder("t_order").dataSourceRule(dataSourceRule).build();
         TableRule orderItemTableRule = TableRule.builder("t_order_item").dataSourceRule(dataSourceRule).build();
         ShardingRule shardingRule = ShardingRule.builder().dataSourceRule(dataSourceRule).tableRules(Lists.newArrayList(orderTableRule, orderItemTableRule))
@@ -83,6 +96,12 @@ public abstract class AbstractShardingDataBasesOnlyHintDBUnitTest extends Abstra
         return new ShardingDataSource(shardingRule);
     }
     
+    @AfterClass
+    public static void clear() {
+        isShutdown = true;
+        shardingDataSource.shutdown();
+    }
+    
     protected void assertDataSet(final String expectedDataSetFile, final DynamicShardingValueHelper helper, 
                                  final Connection connection, final String actualTableName, final String sql, final Object... params) throws SQLException, DatabaseUnitException {
         try (DynamicShardingValueHelper anotherHelper = helper) {
@@ -90,15 +109,9 @@ public abstract class AbstractShardingDataBasesOnlyHintDBUnitTest extends Abstra
         }
     }
     
-    protected void assertDataSet(final String expectedDataSetFile, final DynamicShardingValueHelper helper, final Connection connection, final String actualTableName, final String sql)
-            throws SQLException, DatabaseUnitException {
-        try (DynamicShardingValueHelper anotherHelper = helper) {
-            assertDataSet(expectedDataSetFile, connection, actualTableName, sql);
-        }
-    }
-    
-    protected class DynamicShardingValueHelper implements AutoCloseable {
+    class DynamicShardingValueHelper implements AutoCloseable {
         
+        @Getter(AccessLevel.PROTECTED)
         private final HintManager hintManager;
         
         DynamicShardingValueHelper(final int userId, final int orderId) {

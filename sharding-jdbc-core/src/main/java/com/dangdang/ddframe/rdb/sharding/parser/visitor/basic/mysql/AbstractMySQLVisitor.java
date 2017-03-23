@@ -65,19 +65,19 @@ public abstract class AbstractMySQLVisitor extends MySqlOutputVisitor implements
         return parseContext;
     }
     
-    protected final void stepInQuery() {
+    final void stepInQuery() {
         if (0 == parseContextIndex) {
             parseContextIndex++;
             return;
         }
         ParseContext parseContext = new ParseContext(parseContextIndex++);
-        parseContext.setShardingColumns(this.parseContext.getShardingColumns());
+        parseContext.setShardingRule(this.parseContext.getShardingRule());
         parseContext.setParentParseContext(this.parseContext);
         this.parseContext.getSubParseContext().add(parseContext);
         this.parseContext = parseContext;
     }
     
-    protected final void stepOutQuery() {
+    final void stepOutQuery() {
         if (null == parseContext.getParentParseContext()) {
             return;
         }
@@ -92,6 +92,11 @@ public abstract class AbstractMySQLVisitor extends MySqlOutputVisitor implements
     @Override
     public final void printToken(final String token) {
         getSQLBuilder().appendToken(SQLUtil.getExactlyValue(token));
+    }
+    
+    @Override
+    public final void printToken(final String label, final String token) {
+        getSQLBuilder().appendToken(label, SQLUtil.getExactlyValue(token));
     }
     
     /**
@@ -146,7 +151,7 @@ public abstract class AbstractMySQLVisitor extends MySqlOutputVisitor implements
     @Override
     // TODO SELECT [别名.xxx]的情况，目前都是替换成token，解析之后应该替换回去
     public final boolean visit(final SQLPropertyExpr x) {
-        if (!(x.getParent() instanceof SQLBinaryOpExpr) && !(x.getParent() instanceof SQLSelectItem)) {
+        if (null != x.getParent() && !(x.getParent() instanceof SQLBinaryOpExpr) && !(x.getParent() instanceof SQLSelectItem) && !(x.getParent() instanceof SQLBetweenExpr)) {
             return super.visit(x);
         }
         if (!(x.getOwner() instanceof SQLIdentifierExpr)) {

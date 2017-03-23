@@ -26,7 +26,9 @@ import com.dangdang.ddframe.rdb.sharding.api.rule.TableRule;
 import com.dangdang.ddframe.rdb.sharding.api.strategy.database.DatabaseShardingStrategy;
 import com.dangdang.ddframe.rdb.sharding.api.strategy.table.NoneTableShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.api.strategy.table.TableShardingStrategy;
+import com.dangdang.ddframe.rdb.sharding.id.generator.fixture.IncrementIdGenerator;
 import com.dangdang.ddframe.rdb.sharding.jdbc.ShardingDataSource;
+import org.junit.AfterClass;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,7 +36,9 @@ import java.util.List;
 
 public abstract class AbstractShardingDataBasesOnlyDBUnitTest extends AbstractDBUnitTest {
     
-    private final String dataSourceName = "dataSource_%s";
+    private static boolean isShutdown;
+    
+    private static ShardingDataSource shardingDataSource;
     
     @Override
     protected List<String> getSchemaFiles() {
@@ -67,13 +71,24 @@ public abstract class AbstractShardingDataBasesOnlyDBUnitTest extends AbstractDB
     }
     
     protected final ShardingDataSource getShardingDataSource() {
-        DataSourceRule dataSourceRule = new DataSourceRule(createDataSourceMap(dataSourceName));
-        TableRule orderTableRule = TableRule.builder("t_order").dataSourceRule(dataSourceRule).build();
+        if (null != shardingDataSource && !isShutdown) {
+            return shardingDataSource;
+        }
+        isShutdown = false;
+        DataSourceRule dataSourceRule = new DataSourceRule(createDataSourceMap("dataSource_%s"));
+        TableRule orderTableRule = TableRule.builder("t_order").dataSourceRule(dataSourceRule).autoIncrementColumns("user_id").tableIdGenerator(IncrementIdGenerator.class).build();
         TableRule orderItemTableRule = TableRule.builder("t_order_item").dataSourceRule(dataSourceRule).build();
         ShardingRule shardingRule = ShardingRule.builder().dataSourceRule(dataSourceRule).tableRules(Arrays.asList(orderTableRule, orderItemTableRule))
                 .bindingTableRules(Collections.singletonList(new BindingTableRule(Arrays.asList(orderTableRule, orderItemTableRule))))
                 .databaseShardingStrategy(new DatabaseShardingStrategy(Collections.singletonList("user_id"), new MultipleKeysModuloDatabaseShardingAlgorithm()))
                 .tableShardingStrategy(new TableShardingStrategy(Collections.singletonList("order_id"), new NoneTableShardingAlgorithm())).build();
-        return new ShardingDataSource(shardingRule);
+        shardingDataSource = new ShardingDataSource(shardingRule);
+        return shardingDataSource;
+    }
+    
+    @AfterClass
+    public static void clear() {
+        isShutdown = true;
+        shardingDataSource.shutdown();
     }
 }

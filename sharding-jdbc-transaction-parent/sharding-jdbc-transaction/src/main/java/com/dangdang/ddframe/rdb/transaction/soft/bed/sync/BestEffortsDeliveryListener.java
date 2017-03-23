@@ -56,6 +56,7 @@ public final class BestEffortsDeliveryListener implements DMLExecutionEventListe
         BEDSoftTransaction bedSoftTransaction = (BEDSoftTransaction) SoftTransactionManager.getCurrentTransaction().get();
         switch (event.getEventExecutionType()) {
             case BEFORE_EXECUTE:
+                //TODO 对于批量执行的SQL需要解析成两层列表
                 transactionLogStorage.add(new TransactionLog(event.getId(), bedSoftTransaction.getTransactionId(), bedSoftTransaction.getTransactionType(), 
                         event.getDataSource(), event.getSql(), event.getParameters(), System.currentTimeMillis(), 0));
                 return;
@@ -72,12 +73,14 @@ public final class BestEffortsDeliveryListener implements DMLExecutionEventListe
                     Connection conn = null;
                     PreparedStatement preparedStatement = null;
                     try {
-                        conn = bedSoftTransaction.getConnection().getConnection(event.getDataSource(), SQLStatementType.SELECT);
+                        conn = bedSoftTransaction.getConnection().getConnection(event.getDataSource(), SQLStatementType.UPDATE);
                         if (!isValidConnection(conn)) {
-                            conn = bedSoftTransaction.getConnection();
+                            bedSoftTransaction.getConnection().releaseBrokenConnection(conn);
+                            conn = bedSoftTransaction.getConnection().getConnection(event.getDataSource(), SQLStatementType.UPDATE);
                             isNewConnection = true;
                         }
                         preparedStatement = conn.prepareStatement(event.getSql());
+                        //TODO 对于批量事件需要解析成两层列表
                         for (int parameterIndex = 0; parameterIndex < event.getParameters().size(); parameterIndex++) {
                             preparedStatement.setObject(parameterIndex + 1, event.getParameters().get(parameterIndex));
                         }

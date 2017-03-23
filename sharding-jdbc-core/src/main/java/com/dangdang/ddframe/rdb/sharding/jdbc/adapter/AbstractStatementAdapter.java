@@ -18,6 +18,8 @@
 package com.dangdang.ddframe.rdb.sharding.jdbc.adapter;
 
 import com.dangdang.ddframe.rdb.sharding.jdbc.unsupported.AbstractUnsupportedOperationStatement;
+import com.dangdang.ddframe.rdb.sharding.util.SQLUtil;
+import com.dangdang.ddframe.rdb.sharding.util.ThrowableSQLExceptionMethod;
 import lombok.RequiredArgsConstructor;
 
 import java.sql.ResultSet;
@@ -42,13 +44,19 @@ public abstract class AbstractStatementAdapter extends AbstractUnsupportedOperat
     
     private int fetchSize;
     
+    protected abstract void clearRouteStatements();
+    
     @Override
+    @SuppressWarnings("unchecked")
     public final void close() throws SQLException {
-        for (Statement each : getRoutedStatements()) {
-            each.close();
-        }
+        SQLUtil.safeInvoke(getRoutedStatements(), new ThrowableSQLExceptionMethod() {
+            @Override
+            public void apply(final Object object) throws SQLException {
+                ((Statement) object).close();
+            }
+        });
         closed = true;
-        getRoutedStatements().clear();
+        clearRouteStatements();
     }
     
     @Override
@@ -121,11 +129,18 @@ public abstract class AbstractStatementAdapter extends AbstractUnsupportedOperat
     
     @Override
     public final int getUpdateCount() throws SQLException {
-        int result = 0;
+        long result = 0;
+        boolean hasResult = false;
         for (Statement each : getRoutedStatements()) {
+            if (each.getUpdateCount() > -1) {
+                hasResult = true;
+            }
             result += each.getUpdateCount();
         }
-        return result;
+        if (result > Integer.MAX_VALUE) {
+            result = Integer.MAX_VALUE;
+        }
+        return hasResult ? Long.valueOf(result).intValue() : -1;
     }
     
     @Override
@@ -200,7 +215,7 @@ public abstract class AbstractStatementAdapter extends AbstractUnsupportedOperat
     }
     
     @Override
-    public final ResultSet getGeneratedKeys() throws SQLException {
+    public ResultSet getGeneratedKeys() throws SQLException {
         if (1 == getRoutedStatements().size()) {
             return getRoutedStatements().iterator().next().getGeneratedKeys();
         }
@@ -211,7 +226,6 @@ public abstract class AbstractStatementAdapter extends AbstractUnsupportedOperat
      * 获取路由的静态语句对象集合.
      * 
      * @return 路由的静态语句对象集合
-     * @throws SQLException
      */
-    protected abstract Collection<? extends Statement> getRoutedStatements() throws SQLException;
+    protected abstract Collection<? extends Statement> getRoutedStatements();
 }

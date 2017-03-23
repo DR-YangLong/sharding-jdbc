@@ -21,15 +21,27 @@ import com.dangdang.ddframe.rdb.integrate.dbtbl.common.statement.AbstractShardin
 import com.dangdang.ddframe.rdb.integrate.dbtbl.statically.StaticShardingBothHelper;
 import com.dangdang.ddframe.rdb.sharding.jdbc.ShardingDataSource;
 import org.dbunit.DatabaseUnitException;
+import org.junit.AfterClass;
 import org.junit.Test;
 
 import java.sql.SQLException;
 
 public final class StaticShardingBothForStatementWithSelectTest extends AbstractShardingBothForStatementWithSelectTest {
     
+    private static ShardingDataSource shardingDataSource;
+    
     @Override
     protected ShardingDataSource getShardingDataSource() {
-        return StaticShardingBothHelper.getShardingDataSource(createDataSourceMap("dataSource_%s"));
+        if (null != shardingDataSource) {
+            return shardingDataSource;
+        }
+        shardingDataSource = StaticShardingBothHelper.getShardingDataSource(createDataSourceMap("dataSource_%s"));
+        return shardingDataSource;
+    }
+    
+    @AfterClass
+    public static void clear() {
+        shardingDataSource.shutdown();
     }
     
     @Test
@@ -68,6 +80,18 @@ public final class StaticShardingBothForStatementWithSelectTest extends Abstract
     @Test
     public void assertSelectGlobalTableOnly() throws SQLException, DatabaseUnitException {
         String sql = "SELECT * FROM t_global";
+        assertDataSet("integrate/dataset/dbtbl/expect/select/SelectGlobalTableOnly.xml", getShardingDataSource().getConnection(), "t_global", sql);
+    }
+    
+    @Test
+    public void assertSelectGlobalTableWithDatabaseName() throws SQLException, DatabaseUnitException {
+        String sql = "SELECT * FROM dataSource_dbtbl_0.t_global";
+        assertDataSet("integrate/dataset/dbtbl/expect/select/SelectGlobalTableOnly.xml", getShardingDataSource().getConnection(), "t_global", sql);
+    }
+    
+    @Test(expected = IllegalStateException.class)
+    public void assertSelectGlobalTableLacking() throws SQLException, DatabaseUnitException {
+        String sql = "SELECT * FROM dbtbl_0.t_global";
         assertDataSet("integrate/dataset/dbtbl/expect/select/SelectGlobalTableOnly.xml", getShardingDataSource().getConnection(), "t_global", sql);
     }
 }

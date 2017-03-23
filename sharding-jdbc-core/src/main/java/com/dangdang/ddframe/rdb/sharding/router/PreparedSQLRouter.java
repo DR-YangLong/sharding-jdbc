@@ -17,8 +17,12 @@
 
 package com.dangdang.ddframe.rdb.sharding.router;
 
+import com.dangdang.ddframe.rdb.sharding.api.rule.ShardingRule;
+import com.dangdang.ddframe.rdb.sharding.api.rule.TableRule;
+import com.dangdang.ddframe.rdb.sharding.parser.result.GeneratedKeyContext;
 import com.dangdang.ddframe.rdb.sharding.parser.result.SQLParsedResult;
 import com.dangdang.ddframe.rdb.sharding.parser.result.router.ConditionContext;
+import com.google.common.base.Optional;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -35,6 +39,8 @@ public class PreparedSQLRouter {
     
     private final SQLRouteEngine engine;
     
+    private final ShardingRule shardingRule;
+    
     private SQLParsedResult sqlParsedResult;
     
     /**
@@ -48,11 +54,26 @@ public class PreparedSQLRouter {
         if (null == sqlParsedResult) {
             sqlParsedResult = engine.parseSQL(logicSql, parameters);
         } else {
+            generateId(parameters);
             for (ConditionContext each : sqlParsedResult.getConditionContexts()) {
                 each.setNewConditionValue(parameters);
             }
         }
         return engine.routeSQL(sqlParsedResult, parameters);
+    }
+    
+    private void generateId(final List<Object> parameters) {
+        Optional<TableRule> tableRuleOptional = shardingRule.tryFindTableRule(sqlParsedResult.getRouteContext().getTables().iterator().next().getName());
+        if (!tableRuleOptional.isPresent()) {
+            return;
+        }
+        TableRule tableRule = tableRuleOptional.get();
+        GeneratedKeyContext generatedKeyContext = sqlParsedResult.getGeneratedKeyContext();
+        for (String each : generatedKeyContext.getColumns()) {
+            Object id = tableRule.generateId(each);
+            parameters.add(id);
+            generatedKeyContext.putValue(each, id);
+        }
     }
 }
 

@@ -34,6 +34,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -76,6 +77,15 @@ public final class StatementExecutorTest {
         ExecutorTestUtil.clear();
         DMLExecutionEventBus.clearListener();
         DQLExecutionEventBus.clearListener();
+        executorEngine.shutdown();
+    }
+    
+    @Test
+    public void assertNoStatement() throws SQLException {
+        StatementExecutor actual = new StatementExecutor(executorEngine);
+        assertThat(actual.execute(), is(false));
+        assertThat(actual.executeUpdate(), is(0));
+        assertThat(actual.executeQuery().size(), is(0));
     }
     
     @Test
@@ -99,21 +109,25 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteQueryForMultipleStatementsSuccess() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_1");
         ResultSet resultSet1 = mock(ResultSet.class);
         ResultSet resultSet2 = mock(ResultSet.class);
         when(statement1.executeQuery(SELECT_FROM_DUAL)).thenReturn(resultSet1);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
         when(statement2.executeQuery(SELECT_FROM_DUAL)).thenReturn(resultSet2);
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_1");
         actual.addStatement(wrapper2);
         List<ResultSet> actualResultSets = actual.executeQuery();
         assertThat(actualResultSets, hasItem(resultSet1));
         assertThat(actualResultSets, hasItem(resultSet2));
         verify(statement1).executeQuery(SELECT_FROM_DUAL);
+        verify(statement1).getConnection();
         verify(statement2).executeQuery(SELECT_FROM_DUAL);
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(SELECT_FROM_DUAL);
@@ -144,19 +158,23 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteQueryForMultipleStatementsFailure() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_1");
         SQLException exp = new SQLException();
         when(statement1.executeQuery(SELECT_FROM_DUAL)).thenThrow(exp);
         when(statement2.executeQuery(SELECT_FROM_DUAL)).thenThrow(exp);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_1");
         actual.addStatement(wrapper2);
         List<ResultSet> actualResultSets = actual.executeQuery();
         assertThat(actualResultSets, is(Arrays.asList((ResultSet) null, null)));
         verify(statement1).executeQuery(SELECT_FROM_DUAL);
         verify(statement2).executeQuery(SELECT_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(SELECT_FROM_DUAL);
@@ -186,17 +204,21 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteUpdateForMultipleStatementsSuccess() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         when(statement1.executeUpdate(DELETE_FROM_DUAL)).thenReturn(10);
         when(statement2.executeUpdate(DELETE_FROM_DUAL)).thenReturn(20);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         actual.addStatement(wrapper2);
         assertThat(actual.executeUpdate(), is(30));
         verify(statement1).executeUpdate(DELETE_FROM_DUAL);
         verify(statement2).executeUpdate(DELETE_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(DELETE_FROM_DUAL);
@@ -227,18 +249,22 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteUpdateForMultipleStatementsFailure() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         SQLException exp = new SQLException();
         when(statement1.executeUpdate(DELETE_FROM_DUAL)).thenThrow(exp);
         when(statement2.executeUpdate(DELETE_FROM_DUAL)).thenThrow(exp);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         actual.addStatement(wrapper2);
         assertThat(actual.executeUpdate(), is(0));
         verify(statement1).executeUpdate(DELETE_FROM_DUAL);
         verify(statement2).executeUpdate(DELETE_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(DELETE_FROM_DUAL);
@@ -319,17 +345,21 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteForMultipleStatementsSuccessWithDML() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         when(statement1.execute(DELETE_FROM_DUAL)).thenReturn(false);
         when(statement2.execute(DELETE_FROM_DUAL)).thenReturn(false);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         actual.addStatement(wrapper2);
         assertFalse(actual.execute());
         verify(statement1).execute(DELETE_FROM_DUAL);
         verify(statement2).execute(DELETE_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(DELETE_FROM_DUAL);
@@ -360,18 +390,22 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteForMultipleStatementsFailureWithDML() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         SQLException exp = new SQLException();
         when(statement1.execute(DELETE_FROM_DUAL)).thenThrow(exp);
         when(statement2.execute(DELETE_FROM_DUAL)).thenThrow(exp);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDML(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDML(statement2, "ds_1");
         actual.addStatement(wrapper2);
         assertFalse(actual.execute());
         verify(statement1).execute(DELETE_FROM_DUAL);
         verify(statement2).execute(DELETE_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(2)).verifyDataSource("ds_0");
         verify(eventCaller, times(2)).verifyDataSource("ds_1");
         verify(eventCaller, times(4)).verifySQL(DELETE_FROM_DUAL);
@@ -401,17 +435,21 @@ public final class StatementExecutorTest {
     @Test
     public void assertExecuteForMultipleStatements() throws SQLException {
         Statement statement1 = mock(Statement.class);
-        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         Statement statement2 = mock(Statement.class);
-        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_0");
         when(statement1.execute(SELECT_FROM_DUAL)).thenReturn(true);
         when(statement2.execute(SELECT_FROM_DUAL)).thenReturn(true);
+        when(statement1.getConnection()).thenReturn(mock(Connection.class));
+        when(statement2.getConnection()).thenReturn(mock(Connection.class));
         StatementExecutor actual = new StatementExecutor(executorEngine);
+        StatementExecutorWrapper wrapper1 = createStatementExecutorWrapperForDQL(statement1, "ds_0");
         actual.addStatement(wrapper1);
+        StatementExecutorWrapper wrapper2 = createStatementExecutorWrapperForDQL(statement2, "ds_0");
         actual.addStatement(wrapper2);
         assertTrue(actual.execute());
         verify(statement1).execute(SELECT_FROM_DUAL);
         verify(statement2).execute(SELECT_FROM_DUAL);
+        verify(statement1).getConnection();
+        verify(statement2).getConnection();
         verify(eventCaller, times(4)).verifyDataSource("ds_0");
         verify(eventCaller, times(4)).verifySQL(SELECT_FROM_DUAL);
         verify(eventCaller, times(4)).verifyParameters(Collections.emptyList());
@@ -474,16 +512,16 @@ public final class StatementExecutorTest {
     private StatementExecutorWrapper createStatementExecutorWrapperForDQL(final Statement statement, final String dataSource) {
         try {
             return new StatementExecutorWrapper(statement, new SQLExecutionUnit(dataSource, (SQLBuilder) new SQLBuilder().append(SELECT_FROM_DUAL)));
-        } catch (final IOException e) {
-            throw new RuntimeException(e);
+        } catch (final IOException ex) {
+            throw new RuntimeException(ex);
         }
     }
     
     private StatementExecutorWrapper createStatementExecutorWrapperForDML(final Statement statement, final String dataSource) {
         try {
             return new StatementExecutorWrapper(statement, new SQLExecutionUnit(dataSource, (SQLBuilder) new SQLBuilder().append(DELETE_FROM_DUAL)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (final IOException ex) {
+            throw new RuntimeException(ex);
         }
     }
 }

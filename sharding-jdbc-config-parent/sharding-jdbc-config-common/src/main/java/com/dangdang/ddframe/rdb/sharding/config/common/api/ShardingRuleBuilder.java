@@ -27,6 +27,7 @@ import com.dangdang.ddframe.rdb.sharding.api.strategy.database.SingleKeyDatabase
 import com.dangdang.ddframe.rdb.sharding.api.strategy.table.MultipleKeysTableShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.api.strategy.table.SingleKeyTableShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.api.strategy.table.TableShardingStrategy;
+import com.dangdang.ddframe.rdb.sharding.config.common.api.config.AutoIncrementColumnConfig;
 import com.dangdang.ddframe.rdb.sharding.config.common.api.config.BindingTableRuleConfig;
 import com.dangdang.ddframe.rdb.sharding.config.common.api.config.ShardingRuleConfig;
 import com.dangdang.ddframe.rdb.sharding.config.common.api.config.StrategyConfig;
@@ -34,6 +35,7 @@ import com.dangdang.ddframe.rdb.sharding.config.common.api.config.TableRuleConfi
 import com.dangdang.ddframe.rdb.sharding.config.common.internal.algorithm.ClosureDatabaseShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.config.common.internal.algorithm.ClosureTableShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.config.common.internal.parser.InlineParser;
+import com.dangdang.ddframe.rdb.sharding.id.generator.IdGenerator;
 import com.dangdang.ddframe.rdb.sharding.router.strategy.MultipleKeysShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.router.strategy.ShardingAlgorithm;
 import com.dangdang.ddframe.rdb.sharding.router.strategy.ShardingStrategy;
@@ -83,7 +85,11 @@ public final class ShardingRuleBuilder {
     public ShardingRule build() {
         DataSourceRule dataSourceRule = buildDataSourceRule();
         Collection<TableRule> tableRules = buildTableRules(dataSourceRule);
-        return ShardingRule.builder().dataSourceRule(dataSourceRule).tableRules(tableRules).bindingTableRules(buildBindingTableRules(tableRules))
+        com.dangdang.ddframe.rdb.sharding.api.rule.ShardingRule.ShardingRuleBuilder shardingRuleBuilder = ShardingRule.builder().dataSourceRule(dataSourceRule);
+        if (!Strings.isNullOrEmpty(shardingRuleConfig.getIdGeneratorClass())) {
+            shardingRuleBuilder.idGenerator(loadClass(shardingRuleConfig.getIdGeneratorClass(), IdGenerator.class));
+        }
+        return shardingRuleBuilder.tableRules(tableRules).bindingTableRules(buildBindingTableRules(tableRules))
                 .databaseShardingStrategy(buildShardingStrategy(shardingRuleConfig.getDefaultDatabaseStrategy(), DatabaseShardingStrategy.class))
                 .tableShardingStrategy(buildShardingStrategy(shardingRuleConfig.getDefaultTableStrategy(), TableShardingStrategy.class)).build();
     }
@@ -109,9 +115,20 @@ public final class ShardingRuleBuilder {
             if (!Strings.isNullOrEmpty(tableRuleConfig.getDataSourceNames())) {
                 tableRuleBuilder.dataSourceNames(new InlineParser(tableRuleConfig.getDataSourceNames()).evaluate());
             }
+            buildAutoIncrementColumn(tableRuleBuilder, tableRuleConfig);
             result.add(tableRuleBuilder.build());
         }
         return result;
+    }
+    
+    private void buildAutoIncrementColumn(final TableRule.TableRuleBuilder tableRuleBuilder, final TableRuleConfig tableRuleConfig) {
+        for (AutoIncrementColumnConfig each : tableRuleConfig.getAutoIncrementColumns()) {
+            if (Strings.isNullOrEmpty(each.getColumnIdGeneratorClass())) {
+                tableRuleBuilder.autoIncrementColumns(each.getColumnName());
+            } else {
+                tableRuleBuilder.autoIncrementColumns(each.getColumnName(), loadClass(each.getColumnIdGeneratorClass(), IdGenerator.class));
+            }
+        }
     }
     
     private Collection<BindingTableRule> buildBindingTableRules(final Collection<TableRule> tableRules) {
@@ -173,5 +190,14 @@ public final class ShardingRuleBuilder {
         }
         return returnClass.isAssignableFrom(DatabaseShardingStrategy.class) ? (T) new DatabaseShardingStrategy(shardingColumns, (MultipleKeysDatabaseShardingAlgorithm) shardingAlgorithm) 
                 : (T) new TableShardingStrategy(shardingColumns, (MultipleKeysTableShardingAlgorithm) shardingAlgorithm);
+    }
+    
+    @SuppressWarnings("unchecked")
+    private <T> Class<? extends T> loadClass(final String className, final Class<T> superClass) {
+        try {
+            return (Class<? extends T>) superClass.getClassLoader().loadClass(className);
+        } catch (final ClassNotFoundException ex) {
+            throw new IllegalArgumentException(ex);
+        }
     }
 }

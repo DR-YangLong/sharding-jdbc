@@ -17,13 +17,13 @@
 
 package com.dangdang.ddframe.rdb.sharding.parser.result.router;
 
-import java.util.Collection;
-import java.util.LinkedHashSet;
-
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+
+import java.util.Collection;
+import java.util.LinkedHashSet;
 
 /**
  * SQL路由上下文.

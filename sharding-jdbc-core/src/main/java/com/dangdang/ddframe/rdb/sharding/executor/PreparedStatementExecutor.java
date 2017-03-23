@@ -18,16 +18,10 @@
 package com.dangdang.ddframe.rdb.sharding.executor;
 
 import com.codahale.metrics.Timer.Context;
-import com.dangdang.ddframe.rdb.sharding.executor.event.DMLExecutionEvent;
-import com.dangdang.ddframe.rdb.sharding.executor.event.DMLExecutionEventBus;
-import com.dangdang.ddframe.rdb.sharding.executor.event.DQLExecutionEvent;
-import com.dangdang.ddframe.rdb.sharding.executor.event.DQLExecutionEventBus;
 import com.dangdang.ddframe.rdb.sharding.executor.event.EventExecutionType;
-import com.dangdang.ddframe.rdb.sharding.executor.wrapper.BatchPreparedStatementExecutorWrapper;
 import com.dangdang.ddframe.rdb.sharding.executor.wrapper.PreparedStatementExecutorWrapper;
 import com.dangdang.ddframe.rdb.sharding.metrics.MetricsContext;
 import com.google.common.base.Optional;
-import lombok.RequiredArgsConstructor;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -42,12 +36,19 @@ import java.util.Map;
  * @author zhangliang
  * @author caohao
  */
-@RequiredArgsConstructor
 public final class PreparedStatementExecutor {
     
     private final ExecutorEngine executorEngine;
     
     private final Collection<PreparedStatementExecutorWrapper> preparedStatementExecutorWrappers;
+    
+    private final EventPostman eventPostman;
+    
+    public PreparedStatementExecutor(final ExecutorEngine executorEngine, final Collection<PreparedStatementExecutorWrapper> preparedStatementExecutorWrappers) {
+        this.executorEngine = executorEngine;
+        this.preparedStatementExecutorWrappers = preparedStatementExecutorWrappers;
+        this.eventPostman = new EventPostman(preparedStatementExecutorWrappers);
+    }
     
     /**
      * 执行SQL查询.
@@ -56,7 +57,7 @@ public final class PreparedStatementExecutor {
      */
     public List<ResultSet> executeQuery() {
         Context context = MetricsContext.start("ShardingPreparedStatement-executeQuery");
-        postExecutionEvents();
+        eventPostman.postExecutionEvents();
         List<ResultSet> result;
         final boolean isExceptionThrown = ExecutorExceptionHandler.isExceptionThrown();
         final Map<String, Object> dataMap = ExecutorDataMap.getDataMap();
@@ -68,7 +69,9 @@ public final class PreparedStatementExecutor {
         
                 @Override
                 public ResultSet execute(final PreparedStatementExecutorWrapper input) throws Exception {
-                    return executeQueryInternal(input, isExceptionThrown, dataMap);
+                    synchronized (input.getPreparedStatement().getConnection()) {
+                        return executeQueryInternal(input, isExceptionThrown, dataMap);
+                    }
                 }
             });
         } finally {
@@ -85,11 +88,11 @@ public final class PreparedStatementExecutor {
         try {
             result = preparedStatementExecutorWrapper.getPreparedStatement().executeQuery();
         } catch (final SQLException ex) {
-            postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
+            eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
             ExecutorExceptionHandler.handleException(ex);
             return null;
         }
-        postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
+        eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
         return result;
     }
     
@@ -100,7 +103,7 @@ public final class PreparedStatementExecutor {
      */
     public int executeUpdate() {
         Context context = MetricsContext.start("ShardingPreparedStatement-executeUpdate");
-        postExecutionEvents();
+        eventPostman.postExecutionEvents();
         final boolean isExceptionThrown = ExecutorExceptionHandler.isExceptionThrown();
         final Map<String, Object> dataMap = ExecutorDataMap.getDataMap();
         try {
@@ -111,7 +114,9 @@ public final class PreparedStatementExecutor {
         
                 @Override
                 public Integer execute(final PreparedStatementExecutorWrapper input) throws Exception {
-                    return executeUpdateInternal(input, isExceptionThrown, dataMap);
+                    synchronized (input.getPreparedStatement().getConnection()) {
+                        return executeUpdateInternal(input, isExceptionThrown, dataMap);
+                    }
                 }
             }, new MergeUnit<Integer, Integer>() {
         
@@ -140,11 +145,11 @@ public final class PreparedStatementExecutor {
         try {
             result =  preparedStatementExecutorWrapper.getPreparedStatement().executeUpdate();
         } catch (final SQLException ex) {
-            postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
+            eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
             ExecutorExceptionHandler.handleException(ex);
             return 0;
         }
-        postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
+        eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
         return result;
     }
     
@@ -155,43 +160,42 @@ public final class PreparedStatementExecutor {
      */
     public boolean execute() {
         Context context = MetricsContext.start("ShardingPreparedStatement-execute");
-        postExecutionEvents();
+        eventPostman.postExecutionEvents();
         final boolean isExceptionThrown = ExecutorExceptionHandler.isExceptionThrown();
         final Map<String, Object> dataMap = ExecutorDataMap.getDataMap();
         try {
             if (1 == preparedStatementExecutorWrappers.size()) {
                 PreparedStatementExecutorWrapper preparedStatementExecutorWrapper = preparedStatementExecutorWrappers.iterator().next();
-                return executeInternal(preparedStatementExecutorWrapper, isExceptionThrown, dataMap, Optional.fromNullable(context));
+                return executeInternal(preparedStatementExecutorWrapper, isExceptionThrown, dataMap);
             }
-            return executorEngine.execute(preparedStatementExecutorWrappers, new ExecuteUnit<PreparedStatementExecutorWrapper, Boolean>() {
+            List<Boolean> result = executorEngine.execute(preparedStatementExecutorWrappers, new ExecuteUnit<PreparedStatementExecutorWrapper, Boolean>() {
         
                 @Override
                 public Boolean execute(final PreparedStatementExecutorWrapper input) throws Exception {
-                    return executeInternal(input, isExceptionThrown, dataMap, Optional.<Context>absent());
+                    synchronized (input.getPreparedStatement().getConnection()) {
+                        return executeInternal(input, isExceptionThrown, dataMap);
+                    }
                 }
-            }).get(0);
+            });
+            return (null == result || result.isEmpty()) ? false : result.get(0);
         } finally {
             MetricsContext.stop(context);
         }
     }
     
     private boolean executeInternal(final PreparedStatementExecutorWrapper preparedStatementExecutorWrapper,
-                                    final boolean isExceptionThrown, final Map<String, Object> dataMap, final Optional<Context> context) {
+                                    final boolean isExceptionThrown, final Map<String, Object> dataMap) {
         boolean result;
         ExecutorExceptionHandler.setExceptionThrown(isExceptionThrown);
         ExecutorDataMap.setDataMap(dataMap);
         try {
             result = preparedStatementExecutorWrapper.getPreparedStatement().execute();
         } catch (final SQLException ex) {
-            postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
+            eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
             ExecutorExceptionHandler.handleException(ex);
             return false;
-        } finally {
-            if (context.isPresent()) {
-                MetricsContext.stop(context.get());
-            }
         }
-        postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
+        eventPostman.postExecutionEventsAfterExecution(preparedStatementExecutorWrapper);
         return result;
     }
     
@@ -200,21 +204,24 @@ public final class PreparedStatementExecutor {
      * 执行批量接口.
      *
      * @return 每个
+     * @param batchSize 批量执行语句总数
      */
-    public int[] executeBatch() {
+    public int[] executeBatch(final int batchSize) {
         Context context = MetricsContext.start("ShardingPreparedStatement-executeUpdate");
-        postExecutionEvents();
+        eventPostman.postExecutionEvents();
         final boolean isExceptionThrown = ExecutorExceptionHandler.isExceptionThrown();
         final Map<String, Object> dataMap = ExecutorDataMap.getDataMap();
         try {
             if (1 == preparedStatementExecutorWrappers.size()) {
-                return executeBatchInternal((BatchPreparedStatementExecutorWrapper) preparedStatementExecutorWrappers.iterator().next(), isExceptionThrown, dataMap);
+                return executeBatchInternal(preparedStatementExecutorWrappers.iterator().next(), isExceptionThrown, dataMap);
             }
             return executorEngine.execute(preparedStatementExecutorWrappers, new ExecuteUnit<PreparedStatementExecutorWrapper, int[]>() {
                 
                 @Override
                 public int[] execute(final PreparedStatementExecutorWrapper input) throws Exception {
-                    return executeBatchInternal((BatchPreparedStatementExecutorWrapper) input, isExceptionThrown, dataMap);
+                    synchronized (input.getPreparedStatement().getConnection()) {
+                        return executeBatchInternal(input, isExceptionThrown, dataMap);
+                    }
                 }
             }, new MergeUnit<int[], int[]>() {
                 
@@ -223,15 +230,13 @@ public final class PreparedStatementExecutor {
                     if (null == results) {
                         return new int[]{0};
                     }
-                    int length = 0;
-                    for (int[] array : results) {
-                        length += array.length;
-                    }
-                    int[] result = new int[length];
-                    int pos = 0;
-                    for (int[] array : results) {
-                        System.arraycopy(array, 0, result, pos, array.length);
-                        pos += array.length;
+                    int[] result = new int[batchSize];
+                    int i = 0;
+                    for (PreparedStatementExecutorWrapper each : preparedStatementExecutorWrappers) {
+                        for (Integer[] indices : each.getBatchIndices()) {
+                            result[indices[0]] += results.get(i)[indices[1]];
+                        }
+                        i++;
                     }
                     return result;
                 }
@@ -241,62 +246,18 @@ public final class PreparedStatementExecutor {
         }
     }
     
-    private int[] executeBatchInternal(final BatchPreparedStatementExecutorWrapper batchPreparedStatementExecutorWrapper, final boolean isExceptionThrown, final Map<String, Object> dataMap) {
+    private int[] executeBatchInternal(final PreparedStatementExecutorWrapper batchPreparedStatementExecutorWrapper, final boolean isExceptionThrown, final Map<String, Object> dataMap) {
         int[] result;
         ExecutorExceptionHandler.setExceptionThrown(isExceptionThrown);
         ExecutorDataMap.setDataMap(dataMap);
         try {
             result = batchPreparedStatementExecutorWrapper.getPreparedStatement().executeBatch();
         } catch (final SQLException ex) {
-            postBatchExecutionEventsAfterExecution(batchPreparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
+            eventPostman.postExecutionEventsAfterExecution(batchPreparedStatementExecutorWrapper, EventExecutionType.EXECUTE_FAILURE, Optional.of(ex));
             ExecutorExceptionHandler.handleException(ex);
             return null;
         }
-        postBatchExecutionEventsAfterExecution(batchPreparedStatementExecutorWrapper);
+        eventPostman.postExecutionEventsAfterExecution(batchPreparedStatementExecutorWrapper);
         return result;
-    }
-    
-    private void postBatchExecutionEventsAfterExecution(final BatchPreparedStatementExecutorWrapper batchPreparedStatementExecutorWrapper) {
-        postBatchExecutionEventsAfterExecution(batchPreparedStatementExecutorWrapper, EventExecutionType.EXECUTE_SUCCESS, Optional.<SQLException>absent());
-    }
-    
-    private void postBatchExecutionEventsAfterExecution(
-            final BatchPreparedStatementExecutorWrapper batchPreparedStatementExecutorWrapper, final EventExecutionType eventExecutionType, final Optional<SQLException> exp) {
-        for (DMLExecutionEvent each : batchPreparedStatementExecutorWrapper.getDmlExecutionEvents()) {
-            each.setEventExecutionType(eventExecutionType);
-            each.setExp(exp);
-            DMLExecutionEventBus.post(each);
-        }
-    }
-    
-    private void postExecutionEvents() {
-        for (PreparedStatementExecutorWrapper each : preparedStatementExecutorWrappers) {
-            if (each.getDMLExecutionEvent().isPresent()) {
-                DMLExecutionEventBus.post(each.getDMLExecutionEvent().get());
-            }
-            if (each.getDQLExecutionEvent().isPresent()) {
-                DQLExecutionEventBus.post(each.getDQLExecutionEvent().get());
-            }
-        }
-    }
-    
-    private void postExecutionEventsAfterExecution(final PreparedStatementExecutorWrapper preparedStatementExecutorWrapper) {
-        postExecutionEventsAfterExecution(preparedStatementExecutorWrapper, EventExecutionType.EXECUTE_SUCCESS, Optional.<SQLException>absent());
-    }
-    
-    private void postExecutionEventsAfterExecution(final PreparedStatementExecutorWrapper preparedStatementExecutorWrapper,
-                                                   final EventExecutionType eventExecutionType, final Optional<SQLException> exp) {
-        if (preparedStatementExecutorWrapper.getDMLExecutionEvent().isPresent()) {
-            DMLExecutionEvent event = preparedStatementExecutorWrapper.getDMLExecutionEvent().get();
-            event.setEventExecutionType(eventExecutionType);
-            event.setExp(exp);
-            DMLExecutionEventBus.post(event);
-        }
-        if (preparedStatementExecutorWrapper.getDQLExecutionEvent().isPresent()) {
-            DQLExecutionEvent event = preparedStatementExecutorWrapper.getDQLExecutionEvent().get();
-            event.setEventExecutionType(eventExecutionType);
-            event.setExp(exp);
-            DQLExecutionEventBus.post(event);
-        }
     }
 }

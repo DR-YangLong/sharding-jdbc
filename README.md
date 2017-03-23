@@ -1,11 +1,11 @@
-##Sharding-JDBC - A JDBC driver for shard databases and tables 
+# Sharding-JDBC - JDBC driver for shard databases and tables 
 
 # [中文主页](README_cn.md)
-
-[![Hex.pm](http://dangdangdotcom.github.io/sharding-jdbc/img/license.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
-[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc)
 [![Build Status](https://secure.travis-ci.org/dangdangdotcom/sharding-jdbc.png?branch=master)](https://travis-ci.org/dangdangdotcom/sharding-jdbc)
+[![Maven Status](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.dangdang/sharding-jdbc)
 [![Coverage Status](https://coveralls.io/repos/dangdangdotcom/sharding-jdbc/badge.svg?branch=master&service=github)](https://coveralls.io/github/dangdangdotcom/sharding-jdbc?branch=master)
+[![GitHub release](https://img.shields.io/github/release/dangdangdotcom/sharding-jdbc.svg)](https://github.com/dangdangdotcom/sharding-jdbc/releases)
+[![Hex.pm](http://dangdangdotcom.github.io/sharding-jdbc/img/license.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
 
 # Overview
 
@@ -38,6 +38,9 @@ Sharding-JDBC is a JDBC extension, provides distributed features such as shardin
 * Spring namespace
 * YAML
 * Inline expression
+
+## 6. ID Generation
+* Distributed Unique Time-Sequence Generation
 
 ***
 
@@ -130,7 +133,7 @@ try (
                 <rdb:table-rule logic-table="t_order" actual-tables="t_order_${0..3}" table-strategy="orderTableStrategy"/>
                 <rdb:table-rule logic-table="t_order_item" actual-tables="t_order_item_${0..3}" table-strategy="orderItemTableStrategy"/>
             </rdb:table-rules>
-            <rdb:default-database-strategy sharding-columns="user_id" algorithm-expression="dbtbl_${user_id.longValue() % 2 + 1}"/>
+            <rdb:default-database-strategy sharding-columns="none" algorithm-class="com.dangdang.ddframe.rdb.sharding.api.strategy.database.NoneDatabaseShardingAlgorithm"/>
         </rdb:sharding-rule>
     </rdb:data-source>
 </beans>

@@ -17,12 +17,12 @@
 
 package com.dangdang.ddframe.rdb.sharding.jdbc.util;
 
+import com.dangdang.ddframe.rdb.sharding.exception.ShardingJdbcException;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-
-import com.dangdang.ddframe.rdb.sharding.exception.ShardingJdbcException;
-
-import lombok.RequiredArgsConstructor;
 
 /**
  * 反射调用JDBC相关方法的工具类.
@@ -32,8 +32,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public final class JdbcMethodInvocation {
     
+    @Getter
     private final Method method;
     
+    @Getter
     private final Object[] arguments;
     
     /**
